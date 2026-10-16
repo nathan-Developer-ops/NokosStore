@@ -1,175 +1,85 @@
-const $ = (selector) => document.querySelector(selector);
-const state = { apps: [], countries: [], orders: [], toastTimer: null };
-$('#year').textContent = new Date().getFullYear();
-
-function toast(message) {
-    const el = $('#toast');
-    el.textContent = message;
-    el.classList.add('show');
-    clearTimeout(state.toastTimer);
-    state.toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+const $ = s => document.querySelector(s);
+const state = {servers:[],apps:[],countries:[],prices:[],orders:[],server:null,app:null,country:null,price:null};
+const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const arr = data => {
+ if(Array.isArray(data)) return data;
+ if(!data || typeof data!=='object') return [];
+ for(const k of ['data','results','items','servers','apps','countries','orders','prices']) if(Array.isArray(data[k])) return data[k];
+ if(data.data && typeof data.data==='object') for(const k of ['items','results','servers','apps','countries','orders','prices']) if(Array.isArray(data.data[k])) return data.data[k];
+ return [];
+};
+const val=(o,keys,fallback='')=>{for(const k of keys)if(o&&o[k]!==undefined&&o[k]!==null&&o[k]!=='')return o[k];return fallback};
+const idOf=(o,keys)=>String(val(o,keys,''));
+const labelOf=(o,keys)=>String(val(o,keys,idOf(o,['id','code','slug'])||'Tidak diketahui'));
+const money=(v,c='IDR')=>{let n=Number(v);if(!Number.isFinite(n))return v||'—';try{return new Intl.NumberFormat('id-ID',{style:'currency',currency:c,maximumFractionDigits:0}).format(n)}catch{return 'Rp '+n.toLocaleString('id-ID')}};
+async function api(resource,params={}){const q=new URLSearchParams(params);const r=await fetch('/api/'+resource+(q.size?'?'+q:''));let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||d.message||`API error ${r.status}`);return d}
+function toast(s){const el=$('#toast');el.textContent=s;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),3600)}
+function showModal(title,text){$('#modalTitle').textContent=title;$('#modalText').textContent=text;$('#modal').classList.add('show')}
+function serverId(s){return val(s,['id','server_id','code','slug','name'],'')}
+function appId(a){return val(a,['id','app_id','code','slug'],'')}
+function countryId(c){return val(c,['id','country_id','code','iso','iso2'],'')}
+function serverName(s){return String(val(s,['name','title','label'],`Server ${serverId(s)}`))}
+function appName(a){return String(val(a,['name','title','app_name','label'],appId(a)))}
+function countryName(c){return String(val(c,['name','title','country_name','label'],countryId(c)))}
+function renderServers(){
+ const el=$('#servers');
+ if(!state.servers.length){el.innerHTML='<div class="loading">Server tidak ditemukan dari API.</div>';return}
+ el.innerHTML=state.servers.map((s,i)=>{const id=serverId(s);return `<button class="choice server-choice ${state.server&&String(serverId(state.server))===String(id)?'selected':''}" data-server-index="${i}"><span class="server-icon">▦</span><span><strong>${escapeHtml(serverName(s))}</strong><small>${escapeHtml(val(s,['description','status','type'],'Tersedia di API'))}</small></span></button>`}).join('');
+ el.querySelectorAll('[data-server-index]').forEach(b=>b.onclick=()=>{state.server=state.servers[Number(b.dataset.serverIndex)];state.country=null;state.price=null;renderServers();updateSummary();if(state.app)loadCountries().catch(e=>toast(e.message));else toast('Sekarang tekan Pilih Platform untuk memilih aplikasi dari API.')});
+ $('#serverStatus').innerHTML=state.servers.map(s=>`<div class="server-line"><span class="mini-server">▦</span><span>${escapeHtml(serverName(s))}<small><i></i> Data API</small></span></div>`).join('');
 }
-function getArray(data) {
-    if (Array.isArray(data)) return data;
-    if (!data || typeof data !== 'object') return [];
-    for (const key of ['data', 'results', 'items', 'apps', 'countries', 'orders', 'servers', 'prices']) {
-        if (Array.isArray(data[key])) return data[key];
-    }
-    if (data.data && typeof data.data === 'object') {
-        for (const key of ['items', 'results', 'apps', 'countries', 'orders', 'servers', 'prices']) {
-            if (Array.isArray(data.data[key])) return data.data[key];
-        }
-    }
-    return [];
+function renderApps(){
+ const el=$('#platforms');
+ if(!state.apps.length){el.innerHTML='<div class="loading">Aplikasi tidak ditemukan dari API.</div>';return}
+ el.innerHTML=state.apps.map((a,i)=>{const name=appName(a);const icons={'WhatsApp':'🟢','Whatsapp':'🟢','Telegram':'✈️','Instagram':'📸','Facebook':'🔵','TikTok':'🎵','X':'𝕏'};return `<button class="choice app-choice ${state.app&&String(appId(state.app))===String(appId(a))?'selected':''}" data-app-index="${i}"><span class="app-icon">${icons[name]||'📱'}</span><strong>${escapeHtml(name)}</strong></button>`}).join('');
+ el.querySelectorAll('[data-app-index]').forEach(b=>b.onclick=async()=>{state.app=state.apps[Number(b.dataset.appIndex)];state.country=null;state.price=null;renderApps();$('#platformHint').textContent='Dipilih: '+appName(state.app);$('#platformToggle').setAttribute('aria-expanded','true');$('#platformArea').hidden=false;updateSummary();try{await loadCountries()}catch(e){toast(e.message)}});
 }
-function pick(obj, keys, fallback = '—') {
-    for (const key of keys) if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];
-    return fallback;
+function renderCountries(filter=''){
+ const el=$('#countries');const list=state.countries.filter(c=>countryName(c).toLowerCase().includes(filter.toLowerCase())||String(val(c,['iso','iso2','country_code'],'')).toLowerCase().includes(filter.toLowerCase()));
+ if(!list.length){el.innerHTML='<div class="loading">Tidak ada negara yang cocok, atau API mengembalikan daftar kosong.</div>';return}
+ el.innerHTML=list.map(c=>{const idx=state.countries.indexOf(c);const name=countryName(c);const flags={'Indonesia':'🇮🇩','Malaysia':'🇲🇾','Singapura':'🇸🇬','Singapore':'🇸🇬','Amerika Serikat':'🇺🇸','United States':'🇺🇸','Inggris':'🇬🇧','United Kingdom':'🇬🇧','Canada':'🇨🇦','Kanada':'🇨🇦','Germany':'🇩🇪','Jerman':'🇩🇪','Australia':'🇦🇺','India':'🇮🇳','Brazil':'🇧🇷','Brasil':'🇧🇷'};const p=priceForCountry(c);return `<button class="choice country-choice ${state.country&&String(countryId(state.country))===String(countryId(c))?'selected':''}" data-country-index="${idx}"><span class="flag">${flags[name]||'🌐'}</span><strong>${escapeHtml(name)}</strong><small>${p!==null?escapeHtml(money(p)):escapeHtml(val(c,['calling_code','dial_code'],'Tersedia'))}</small></button>`}).join('');
+ el.querySelectorAll('[data-country-index]').forEach(b=>b.onclick=async()=>{state.country=state.countries[Number(b.dataset.countryIndex)];state.price=null;renderCountries($('#countrySearch').value);updateSummary();try{await loadPrice()}catch(e){toast('Negara dipilih, tetapi harga belum berhasil dimuat: '+e.message)}});
 }
-function safeText(value) { return String(value ?? '—'); }
-function money(value, currency = 'IDR') {
-    const num = Number(value);
-    return Number.isFinite(num) ? new Intl.NumberFormat('id-ID', { style: 'currency', currency, maximumFractionDigits: 0 }).format(num) : safeText(value);
+function priceForCountry(c){const cid=String(countryId(c));const found=state.prices.find(p=>String(val(p,['country_id','country','id'],'!'))===cid);const n=Number(val(found||{},['price','amount','cost','rate'],NaN));return Number.isFinite(n)?n:null}
+async function loadServers(){const d=await api('servers');state.servers=arr(d);if(!state.server)state.server=state.servers[0]||null;renderServers();updateSummary()}
+async function loadApps(){const d=await api('apps');state.apps=arr(d);renderApps();$('#platformHint').textContent=state.app?'Dipilih: '+appName(state.app):'Ketuk untuk melihat aplikasi dari API'}
+async function loadCountries(){if(!state.app){$('#countryPrompt').textContent='Pilih platform terlebih dahulu.';return}const app=appId(state.app);const d=await api('countries',{app});state.countries=arr(d);$('#countryPrompt').hidden=state.countries.length>0;$('#countryArea').hidden=!state.countries.length;$('#countrySearch').value='';renderCountries();$('#platformHint').textContent='Dipilih: '+appName(state.app)}
+async function loadPrice(){
+ if(!state.server||!state.app||!state.country)return;
+ const params={server:String(serverId(state.server)),app:String(appId(state.app)),country:String(countryId(state.country))};
+ const d=await api('prices',params);state.prices=arr(d);
+ const exact=state.prices.find(p=>String(val(p,['country_id','country','countryId'],'!'))===params.country);
+ const p=exact||state.prices[0];
+ if(p){state.price=val(p,['price','amount','cost','rate'],null);if(state.price===null&&typeof p==='number')state.price=p}
+ updateSummary();
+ if(state.price===null||state.price===undefined)toast('API harga merespons, tetapi field harga tidak dikenali. Periksa format respons Telekos.');
 }
-async function api(resource, params = {}) {
-    const query = new URLSearchParams(params);
-    const response = await fetch(`/api/${resource}${query.toString() ? `?${query}` : ''}`);
-    let data;
-    try { data = await response.json(); } catch { data = {}; }
-    if (!response.ok) throw new Error(data.error || data.message || `API error (${response.status})`);
-    return data;
+async function loadBalance(){const d=await api('balance');const o=d.data||d;const v=val(o,['balance','amount','available_balance','credit'],null);$('#balanceValue').textContent=v===null?'Tersedia':money(v,val(o,['currency'],'IDR'))}
+async function loadOrders(){const d=await api('orders',{page:'1'});state.orders=arr(d);$('#recentOrders').innerHTML=state.orders.length?state.orders.slice(0,5).map(o=>`<div class="recent-item"><span class="recent-icon">📱</span><span><strong>#${escapeHtml(val(o,['id','order_id','trx_id'],'—'))}</strong><small>${escapeHtml(val(o.app||{},['name','id'],val(o,['app_name','app'],'Aplikasi')))} · ${escapeHtml(val(o.country||{},['name','iso'],val(o,['country_name','country'],'Negara')))}</small></span><b class="status">${escapeHtml(val(o,['status','state'],'—'))}</b></div>`).join(''):'<div class="loading">Belum ada pesanan pada respons API.</div>'}
+function updateSummary(){
+ $('#sumServer').textContent=state.server?serverName(state.server):'—';$('#sumPlatform').textContent=state.app?appName(state.app):'Belum dipilih';$('#sumCountry').textContent=state.country?countryName(state.country):'Belum dipilih';
+ const p=state.price!==null&&state.price!==undefined?money(state.price):'—';$('#sumPrice').textContent=p;$('#price').textContent=p;$('#serverChip').textContent=state.server?serverName(state.server):'Belum dipilih';
+ document.querySelectorAll('.step').forEach((el,i)=>el.classList.toggle('active',i===0?!!state.server:i===1?!!state.app:i===2?!!state.country:i===3?false:false));
 }
-function setConnection(ok, message) {
-    $('#connection-text').textContent = ok ? 'Terhubung' : 'Perlu diperiksa';
-    $('#connection-title').textContent = ok ? 'Server API merespons' : 'Belum terhubung';
-    $('#connection-detail').textContent = message;
-    $('.status-dot').style.background = ok ? '#43d6a0' : '#f0b45c';
+async function refreshAll(){
+ $('#refreshBtn').disabled=true;$('#refreshBtn').textContent='↻ Memuat API…';
+ try{
+  const results=await Promise.allSettled([loadServers(),loadApps(),loadBalance(),loadOrders()]);
+  const failed=results.filter(r=>r.status==='rejected');
+  if(failed.length===results.length){$('#apiBadge').textContent='API gagal';$('#statusTitle').textContent='API belum terhubung';$('#statusDetail').textContent=failed[0].reason.message;$('#statusDot').classList.add('offline');toast(failed[0].reason.message)}
+  else{$('#apiBadge').textContent=failed.length?'API sebagian':'API terhubung';$('#statusTitle').textContent=failed.length?'Sebagian API merespons':'Server API merespons';$('#statusDetail').textContent=failed.length?failed[0].reason.message:'Data dibaca dari backend Telekos';$('#statusDot').classList.toggle('offline',!!failed.length);if(failed.length)toast(failed[0].reason.message)}
+ }finally{$('#refreshBtn').disabled=false;$('#refreshBtn').textContent='↻ Refresh data API'}
 }
-function renderCards(container, items, type) {
-    if (!items.length) {
-        container.innerHTML = '<div class="empty-state">Data kosong atau format respons API berbeda dari perkiraan.</div>';
-        return;
-    }
-    container.innerHTML = items.map((item) => {
-        const name = pick(item, ['name', 'title', 'app_name', 'country_name', 'id', 'code']);
-        const id = pick(item, ['id', 'app_id', 'country_id', 'code']);
-        const extra = type === 'countries'
-            ? `${pick(item, ['iso', 'iso2', 'country_code'], '')} ${pick(item, ['calling_code', 'dial_code'], '')}`
-            : type === 'prices' ? money(pick(item, ['price', 'amount', 'cost'], '—'), pick(item, ['currency'], 'IDR'))
-            : pick(item, ['description', 'slug', 'server', 'status'], 'Data dari API Telekos');
-        return `<article class="data-card"><h3>${escapeHtml(name)}</h3><p>ID: ${escapeHtml(id)}</p><p>${escapeHtml(extra)}</p><span class="tag">${escapeHtml(type)}</span></article>`;
-    }).join('');
-}
-function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-}
-function renderOrders(container, orders, compact = false) {
-    state.orders = orders;
-    $('#orders-count').textContent = orders.length;
-    if (!orders.length) { container.innerHTML = '<div class="empty-state">Tidak ada pesanan yang ditampilkan.</div>'; return; }
-    const rows = orders.map(order => {
-        const id = pick(order, ['id', 'order_id', 'trx_id']);
-        const app = pick(order.app || {}, ['name', 'id'], pick(order, ['app_name', 'app']));
-        const country = pick(order.country || {}, ['name', 'iso'], pick(order, ['country_name', 'country']));
-        const status = pick(order, ['status', 'state']);
-        const price = money(pick(order, ['price', 'amount', 'cost']), pick(order, ['currency'], 'IDR'));
-        return `<tr><td>${escapeHtml(id)}</td><td>${escapeHtml(app)}</td><td>${escapeHtml(country)}</td><td><span class="status">${escapeHtml(status)}</span></td><td>${escapeHtml(price)}</td></tr>`;
-    }).join('');
-    container.innerHTML = `<table><thead><tr><th>Order ID</th><th>App</th><th>Country</th><th>Status</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
-async function loadBalance() {
-    const data = await api('balance');
-    const obj = data.data || data;
-    const value = pick(obj, ['balance', 'amount', 'available_balance', 'credit'], null);
-    $('#balance-value').textContent = value === null ? 'Tersedia' : money(value, pick(obj, ['currency'], 'IDR'));
-}
-async function loadApps() {
-    const data = await api('apps');
-    state.apps = getArray(data);
-    $('#apps-count').textContent = state.apps.length || '—';
-    renderCards($('#applications-list'), state.apps, 'applications');
-    const select = $('#country-app');
-    const previous = select.value;
-    if (state.apps.length) {
-        select.innerHTML = state.apps.map(app => {
-            const id = pick(app, ['id', 'app_id', 'code', 'slug'], 'wa');
-            const name = pick(app, ['name', 'title'], id);
-            return `<option value="${escapeHtml(id)}">${escapeHtml(name)} (${escapeHtml(id)})</option>`;
-        }).join('');
-        if ([...select.options].some(option => option.value === previous)) select.value = previous;
-    }
-}
-async function loadCountries() {
-    const app = $('#country-app').value || 'wa';
-    const data = await api('countries', { app });
-    state.countries = getArray(data);
-    $('#countries-count').textContent = state.countries.length || '—';
-    renderCards($('#countries-list'), state.countries, 'countries');
-}
-async function loadPrices() {
-    const params = {
-        server: $('#price-server').value.trim(),
-        app: $('#price-app').value.trim(),
-        country: $('#price-country').value.trim()
-    };
-    if (!params.server || !params.app || !params.country) {
-        toast('Isi Server ID, App ID, dan Country ID terlebih dahulu.'); return;
-    }
-    const data = await api('prices', params);
-    renderCards($('#prices-list'), getArray(data), 'prices');
-}
-async function loadOrders() {
-    const page = $('#orders-page').value || '1';
-    const data = await api('orders', { page });
-    const orders = getArray(data);
-    renderOrders($('#orders-list'), orders);
-    renderOrders($('#recent-orders'), orders.slice(0, 5), true);
-}
-async function refreshDashboard() {
-    $('#refresh-btn').disabled = true;
-    $('#refresh-btn').textContent = '↻ Loading…';
-    try {
-        const results = await Promise.allSettled([loadBalance(), loadApps(), loadCountries(), loadOrders()]);
-        const failed = results.filter(result => result.status === 'rejected');
-        if (failed.length === results.length) {
-            setConnection(false, failed[0].reason.message);
-            toast(`API belum berhasil dimuat: ${failed[0].reason.message}`);
-        } else {
-            setConnection(true, failed.length ? `${failed.length} bagian gagal dimuat. Periksa konfigurasi atau format respons.` : 'Data utama berhasil dimuat dari API.');
-            if (failed.length) toast(failed[0].reason.message);
-        }
-    } finally {
-        $('#refresh-btn').disabled = false;
-        $('#refresh-btn').innerHTML = '↻ <span>Refresh data</span>';
-    }
-}
-function showPage(page) {
-    const valid = ['dashboard', 'applications', 'countries', 'prices', 'orders'].includes(page) ? page : 'dashboard';
-    document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === `page-${valid}`));
-    document.querySelectorAll('.nav-link').forEach(el => el.classList.toggle('active', el.dataset.page === valid));
-    $('#page-title').textContent = ({ dashboard: 'Dashboard', applications: 'Applications', countries: 'Countries', prices: 'Live price', orders: 'Orders' })[valid];
-    $('.sidebar').classList.remove('open');
-    if (valid === 'applications') loadApps().catch(err => toast(err.message));
-    if (valid === 'countries') loadCountries().catch(err => toast(err.message));
-    if (valid === 'orders') loadOrders().catch(err => toast(err.message));
-}
-document.querySelectorAll('[data-page]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); showPage(link.dataset.page); history.replaceState(null, '', `#${link.dataset.page}`); }));
-document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => { showPage(button.dataset.go); history.replaceState(null, '', `#${button.dataset.go}`); }));
-$('#refresh-btn').addEventListener('click', refreshDashboard);
-$('#load-countries').addEventListener('click', () => loadCountries().catch(err => toast(err.message)));
-$('#load-prices').addEventListener('click', () => loadPrices().catch(err => toast(err.message)));
-$('#load-orders').addEventListener('click', () => loadOrders().catch(err => toast(err.message)));
-$('#load-order-detail').addEventListener('click', async () => {
-    const id = $('#order-id').value.trim();
-    if (!id) return toast('Masukkan ID pesanan terlebih dahulu.');
-    try {
-        const data = await api('order', { id });
-        const order = data.data?.order || data.order || data.data || data;
-        const fields = [['Order ID', pick(order, ['id', 'order_id'])], ['Status', pick(order, ['status'])], ['Application', pick(order.app || {}, ['name', 'id'])], ['Country', pick(order.country || {}, ['name', 'iso'])], ['Price', money(pick(order, ['price', 'amount']), pick(order, ['currency'], 'IDR'))], ['Created', pick(order, ['created_at'])], ['Expires', pick(order, ['expires_at'])]];
-        $('#order-detail').innerHTML = `<article class="panel detail-card"><div class="panel-heading"><div><h3>Order details</h3><p>Informasi pesanan tanpa data OTP</p></div></div>${fields.map(([label, value]) => `<div class="small-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</article>`;
-    } catch (err) { toast(err.message); }
-});
-$('#menu-toggle').addEventListener('click', () => $('.sidebar').classList.toggle('open'));
-window.addEventListener('hashchange', () => showPage(location.hash.slice(1)));
-showPage(location.hash.slice(1) || 'dashboard');
-refreshDashboard();
+$('#platformToggle').addEventListener('click',async()=>{const open=$('#platformArea').hidden;$('#platformArea').hidden=!open;$('#platformToggle').setAttribute('aria-expanded',String(open));$('#platformArrow').textContent=open?'−':'＋';if(open&&!state.apps.length){try{await loadApps()}catch(e){toast(e.message)}}});
+$('#countrySearch').addEventListener('input',e=>renderCountries(e.target.value));
+$('#orderBtn').addEventListener('click',()=>showModal('Pembelian belum diaktifkan','File server.js yang kamu kirim hanya menyediakan endpoint baca: saldo, server, aplikasi, negara, harga, dan riwayat. Endpoint POST untuk membuat pesanan belum ada, jadi tombol ini belum bisa membeli nomor. Server.js tidak saya ubah.'));
+$('#refreshBtn').addEventListener('click',refreshAll);$('#refreshOrders').addEventListener('click',()=>loadOrders().catch(e=>toast(e.message)));
+$('#modalClose').addEventListener('click',()=>$('#modal').classList.remove('show'));$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')});
+$('#loginBtn').addEventListener('click',()=>showModal('Login / Register','Login belum tersedia karena paket asli belum memiliki backend akun pengguna.'));
+$('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('light'));
+$('#menuBtn').addEventListener('click',()=>document.querySelector('.sidebar').classList.toggle('open'));
+document.querySelectorAll('a[href="#history"]').forEach(a=>a.addEventListener('click',()=>setTimeout(()=>$('#history').scrollIntoView({behavior:'smooth'}),0)));
+document.querySelectorAll('a[href="#balance"]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();$('#balance').scrollIntoView({behavior:'smooth'})}));
+document.querySelectorAll('a[href="#help"]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showModal('Bantuan','Jika API gagal, pastikan TELEKOS_API_KEY sudah diatur sebagai environment variable di hosting. Jangan memasukkan API key ke file frontend.')}));
+$('#year').textContent=new Date().getFullYear();
+refreshAll().catch(e=>toast(e.message));
