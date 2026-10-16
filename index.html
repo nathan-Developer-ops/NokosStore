@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>Nokos Store — Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard"><span class="brand-mark">N</span><span>Nokos<span class="brand-muted">Store</span><small>VIRTUAL NUMBER HUB</small></span></a>
+      <div class="nav-label">WORKSPACE</div>
+      <nav>
+        <a class="nav-link active" href="#dashboard" data-page="dashboard"><span>◫</span> Dashboard</a>
+        <a class="nav-link" href="#applications" data-page="applications"><span>▦</span> Applications</a>
+        <a class="nav-link" href="#countries" data-page="countries"><span>◎</span> Countries</a>
+        <a class="nav-link" href="#prices" data-page="prices"><span>↗</span> Live price</a>
+        <a class="nav-link" href="#orders" data-page="orders"><span>▤</span> Orders</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="status-dot"></div><div><strong>API connection</strong><small id="connection-text">Belum diperiksa</small></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><button class="mobile-menu" id="menu-toggle" aria-label="Buka menu">☰</button><div><div class="eyebrow">CONTROL CENTER</div><h1 id="page-title">Dashboard</h1></div><button class="refresh-btn" id="refresh-btn">↻ <span>Refresh data</span></button></header>
+      <div class="notice"><span class="notice-icon">i</span><span>Mode aman: dashboard hanya membaca data API. API key disimpan di server, bukan di browser.</span></div>
+      <section class="page active" id="page-dashboard">
+        <div class="welcome"><div><div class="eyebrow">OVERVIEW</div><h2>Selamat datang di <span>Nokos Store.</span></h2><p>Pantau saldo, katalog, harga, dan pesanan dari satu tempat.</p></div><div class="welcome-symbol">N</div></div>
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-top"><span>Saldo API</span><span class="stat-icon purple">◈</span></div><div class="stat-value" id="balance-value">—</div><div class="stat-foot">Data dari Telekos</div></article>
+          <article class="stat-card"><div class="stat-top"><span>Applications</span><span class="stat-icon blue">▦</span></div><div class="stat-value" id="apps-count">—</div><div class="stat-foot">Layanan tersedia</div></article>
+          <article class="stat-card"><div class="stat-top"><span>Countries</span><span class="stat-icon green">◎</span></div><div class="stat-value" id="countries-count">—</div><div class="stat-foot">Negara pada aplikasi terpilih</div></article>
+          <article class="stat-card"><div class="stat-top"><span>Orders</span><span class="stat-icon orange">▤</span></div><div class="stat-value" id="orders-count">—</div><div class="stat-foot">Item pada halaman pesanan</div></article>
+        </div>
+        <div class="content-grid"><article class="panel"><div class="panel-heading"><div><h3>Quick access</h3><p>Pilih bagian yang ingin kamu lihat.</p></div></div><div class="quick-grid"><button class="quick-card" data-go="applications"><span class="quick-icon blue">▦</span><strong>Applications</strong><small>Lihat daftar aplikasi</small><b>→</b></button><button class="quick-card" data-go="countries"><span class="quick-icon green">◎</span><strong>Countries</strong><small>Jelajahi negara</small><b>→</b></button><button class="quick-card" data-go="prices"><span class="quick-icon purple">↗</span><strong>Live price</strong><small>Cek harga terbaru</small><b>→</b></button><button class="quick-card" data-go="orders"><span class="quick-icon orange">▤</span><strong>Orders</strong><small>Lihat status pesanan</small><b>→</b></button></div></article><article class="panel"><div class="panel-heading"><div><h3>Connection status</h3><p>Status sambungan server</p></div><span class="live-pill"><i></i> LIVE CHECK</span></div><div class="connection-box"><div class="connection-symbol">⌁</div><div><strong id="connection-title">Menunggu pemeriksaan</strong><p id="connection-detail">Tekan Refresh data untuk memulai.</p></div></div><div class="panel-divider"></div><div class="small-row"><span>API base</span><code>telekos.id/v1</code></div><div class="small-row"><span>Mode</span><span class="read-only">Read-only</span></div></article></div>
+        <article class="panel table-panel"><div class="panel-heading"><div><h3>Recent orders</h3><p>Ringkasan data pesanan terbaru</p></div><button class="text-button" data-go="orders">Lihat semua →</button></div><div id="recent-orders" class="empty-state">Tekan Refresh data untuk memuat pesanan.</div></article>
+      </section>
+      <section class="page" id="page-applications"><div class="section-intro"><h2>Applications</h2><p>Daftar layanan yang dikembalikan API Telekos.</p></div><div id="applications-list" class="data-grid"><div class="empty-state">Tekan Refresh data untuk memuat aplikasi.</div></div></section>
+      <section class="page" id="page-countries"><div class="section-intro"><h2>Countries</h2><p>Pilih aplikasi untuk melihat daftar negara yang tersedia.</p></div><div class="filter-bar"><label for="country-app">Application</label><select id="country-app"><option value="wa">WhatsApp (wa)</option></select><button class="primary-btn" id="load-countries">Load countries</button></div><div id="countries-list" class="data-grid"><div class="empty-state">Pilih aplikasi lalu muat negara.</div></div></section>
+      <section class="page" id="page-prices"><div class="section-intro"><h2>Live price</h2><p>Masukkan ID server, aplikasi, dan negara dari data API.</p></div><div class="panel"><div class="form-grid"><label>Server ID<input id="price-server" placeholder="server3"></label><label>App ID<input id="price-app" placeholder="1"></label><label>Country ID<input id="price-country" placeholder="6"></label><button class="primary-btn" id="load-prices">Check price ↗</button></div></div><div id="prices-list" class="data-grid"><div class="empty-state">Isi filter lalu tekan Check price.</div></div></section>
+      <section class="page" id="page-orders"><div class="section-intro"><h2>Orders</h2><p>Daftar dan status pesanan dari akun API kamu.</p></div><div class="filter-bar"><label for="orders-page">Halaman</label><select id="orders-page"><option value="1">Page 1</option><option value="2">Page 2</option><option value="3">Page 3</option><option value="4">Page 4</option><option value="5">Page 5</option></select><button class="primary-btn" id="load-orders">Load orders</button></div><div id="orders-list" class="table-wrap"><div class="empty-state">Tekan Load orders untuk memuat data.</div></div><div class="detail-search"><label for="order-id">Detail order ID</label><div><input id="order-id" placeholder="Masukkan ID pesanan"><button class="secondary-btn" id="load-order-detail">View detail</button></div><p>Informasi OTP dan pesan autentikasi tidak ditampilkan oleh dashboard ini.</p></div><div id="order-detail"></div></section>
+      <footer>© <span id="year"></span> Nokos Store <span>•</span> Built for a safer workflow</footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
